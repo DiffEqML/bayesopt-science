@@ -1,1 +1,1 @@
-# bo-phases
+# Bayesian Methods for Detection of Phase Transitions

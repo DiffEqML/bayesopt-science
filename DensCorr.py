@@ -26,7 +26,7 @@ nice_fonts = {
         "legend.fontsize": 14,
         "xtick.labelsize": 16,
         "ytick.labelsize": 16,
-        "figure.figsize": [7,5],
+        "figure.figsize": [10,8],
 }
 
 mpl.rcParams.update(nice_fonts)
@@ -65,33 +65,24 @@ actual_max = plot_x[np.where(plot_y == plot_y.max())[0]]
 
 # Normalized pressure values
 norm_P = (P - P.min())/(P.max() - P.min())
+norm_corr_length = (corr_length - corr_length.min())/(corr_length.max() - corr_length.min())
 
 bounds = torch.stack([torch.zeros(1), torch.ones(1)])
 
 # Pick which samples to start with
-train_X = [[norm_P[0]], [norm_P[len(P)//4]], [norm_P[len(P)//2]], [norm_P[-1]]]
-train_Y = [[corr_length[0]], [corr_length[len(P)//4]], [corr_length[len(P)//2]], [corr_length[-1]]]
+# train_X = [[norm_P[0]], [norm_P[len(P)//4]], [norm_P[len(P)//2]], [norm_P[-1]]]
+# train_Y = [[norm_corr_length[0]], [norm_corr_length[len(P)//4]], [norm_corr_length[len(P)//2]], [norm_corr_length[-1]]]
+train_X = [[norm_P[0]]]
+train_Y = [[norm_corr_length[0]]]
 train_X = torch.tensor(train_X)
 train_Y = torch.tensor(train_Y)
 
 # Interactive plot to visualize BO moves
-# plt.ion()
-# plt.figure(1)
-# plt.plot(plot_x, plot_y, 'k-', label='f(P)')
-# plt.plot(actual_max, plot_y.max(), 'r1', markersize=20, label='Actual Max')
-# plt.plot(train_X.cpu().numpy()*(P.max() - P.min()) + P.min(), train_Y.cpu().numpy(), 'ko', mfc='None', markersize=8, label='Samples')
-# plt.xlabel('$P~$[bar]')
-# plt.ylabel('$L~[\\AA]$')
-# plt.xlim(70, 82)
-# plt.legend(frameon=False)
-# plt.tight_layout()
-# plt.pause(0.1)
-
 plt.ion()
 fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 ax1.plot(plot_x, plot_y, 'k-', label='f(P)')
 ax1.plot(actual_max, plot_y.max(), 'r1', markersize=20, label='Actual Max')
-ax1.plot(train_X.cpu().numpy()*(P.max() - P.min()) + P.min(), train_Y.cpu().numpy(), 'ko', mfc='None', markersize=8, label='Samples')
+ax1.plot(train_X.cpu().numpy()*(P.max() - P.min()) + P.min(), train_Y.cpu().numpy()*(corr_length.max() - corr_length.min()) + corr_length.min(), 'ko', mfc='None', markersize=8, label='Samples')
 ax1.set( ylabel='$L~[\\AA]$')
 ax1.set_xlim(70, 82)
 ax1.legend(frameon=False)
@@ -102,10 +93,9 @@ ax2.set_xlim(70, 82)
 plt.tight_layout()
 plt.pause(0.1)
 
-
 i = 1
 err = 1
-tol = 1e-3
+tol = 1e-2
 n_iter = 20
 x_span = torch.linspace(0, 1, 1001)[:, None, None] # batch, 1 (q), 1 (feature dimension)
 
@@ -120,15 +110,9 @@ while i <= n_iter and abs(err) > tol:
     EI = qExpectedImprovement(gp, train_Y.max(), maximize=True)
 
     # Optimizing the acquisition function to get its max 
-    candidate, acq_value = optimize_acqf(EI, bounds=bounds, q=1, num_restarts=5, raw_samples=512)
-    
-    # Evaluate ACQ function at the candidate at a linspace
-    # Use this to plot BO moves
-    # Note that ExpectedImprovement has an analytic form that uses GP posteriors
-    # whereas qExpectedImprovement uses a Monte Carlo approximation
-    # https://botorch.org/v/0.1.0/docs/acquisition
-    acq_eval = EI(x_span)
+    candidate, acq_value = optimize_acqf(EI, bounds=bounds, q=1, num_restarts=5, raw_samples=1012)
 
+    acq_eval = EI(x_span)
 
     # Calculate by how much the BO guess has moved by
     unnorm_candidate = candidate*(P.max() - P.min()) + P.min()
@@ -139,9 +123,10 @@ while i <= n_iter and abs(err) > tol:
 
     print(i, unnorm_candidate, f(unnorm_candidate), abs(err).cpu().numpy())
 
+    norm_f_candidate = (f(unnorm_candidate) - corr_length.min())/(corr_length.max() - corr_length.min())
     # Append new torch tensors
     train_X = torch.cat((train_X, candidate))
-    train_Y = torch.cat((train_Y, torch.tensor(f(unnorm_candidate))))
+    train_Y = torch.cat((train_Y, torch.tensor(norm_f_candidate)))
 
     if i == 1:
         mylabel = 'BO Step'
@@ -159,8 +144,8 @@ while i <= n_iter and abs(err) > tol:
     plt.draw()
     # ax1.pause(0.05)
 
-    ax2.plot(plot_x, acq_eval.detach().numpy(), 'g', alpha=0.5, label=mylabel2)
-    ax2.plot(plot_x[np.where(acq_eval.detach().numpy() == acq_eval.detach().numpy().max())[0]], acq_eval.detach().numpy().max(), 'rx', markersize=8, label=mylabel3)
+    ax2.plot(plot_x, acq_eval.detach().numpy()/acq_eval.detach().numpy().max(), 'g', alpha=0.5, label=mylabel2)
+    ax2.plot(plot_x[np.where(acq_eval.detach().numpy() == acq_eval.detach().numpy().max())[0]], 1, 'rx', markersize=8, label=mylabel3)
     ax2.legend(frameon=False)
     plt.draw()
     # ax2.tight_layout()

@@ -75,23 +75,39 @@ train_X = torch.tensor(train_X)
 train_Y = torch.tensor(train_Y)
 
 # Interactive plot to visualize BO moves
+# plt.ion()
+# plt.figure(1)
+# plt.plot(plot_x, plot_y, 'k-', label='f(P)')
+# plt.plot(actual_max, plot_y.max(), 'r1', markersize=20, label='Actual Max')
+# plt.plot(train_X.cpu().numpy()*(P.max() - P.min()) + P.min(), train_Y.cpu().numpy(), 'ko', mfc='None', markersize=8, label='Samples')
+# plt.xlabel('$P~$[bar]')
+# plt.ylabel('$L~[\\AA]$')
+# plt.xlim(70, 82)
+# plt.legend(frameon=False)
+# plt.tight_layout()
+# plt.pause(0.1)
+
 plt.ion()
-plt.figure(1)
-plt.plot(plot_x, plot_y, 'k-', label='f(P)')
-plt.plot(actual_max, plot_y.max(), 'r1', markersize=20, label='Actual Max')
-plt.plot(train_X.cpu().numpy()*(P.max() - P.min()) + P.min(), train_Y.cpu().numpy(), 'ko', mfc='None', markersize=8, label='Samples')
-plt.xlabel('$P~$[bar]')
-plt.ylabel('$L~[\\AA]$')
-plt.xlim(70, 82)
-plt.legend(frameon=False)
+fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
+ax1.plot(plot_x, plot_y, 'k-', label='f(P)')
+ax1.plot(actual_max, plot_y.max(), 'r1', markersize=20, label='Actual Max')
+ax1.plot(train_X.cpu().numpy()*(P.max() - P.min()) + P.min(), train_Y.cpu().numpy(), 'ko', mfc='None', markersize=8, label='Samples')
+ax1.set( ylabel='$L~[\\AA]$')
+ax1.set_xlim(70, 82)
+ax1.legend(frameon=False)
+# ax1.pause(0.1)
+
+ax2.set(xlabel='$P~$[bar]', ylabel='Exp. Improvement')
+ax2.set_xlim(70, 82)
 plt.tight_layout()
 plt.pause(0.1)
+
 
 i = 1
 err = 1
 tol = 1e-3
 n_iter = 20
-x_span = torch.linspace(0, 1, 200)[:, None, None] # batch, 1 (q), 1 (feature dimension)
+x_span = torch.linspace(0, 1, 1001)[:, None, None] # batch, 1 (q), 1 (feature dimension)
 
 # Main BO Loop
 while i <= n_iter and abs(err) > tol:
@@ -129,18 +145,29 @@ while i <= n_iter and abs(err) > tol:
 
     if i == 1:
         mylabel = 'BO Step'
+        mylabel2 = 'Acq. Func.'
+        mylabel3 = 'Target'
     else:
         mylabel = None
+        mylabel2 = None
+        mylabel3 = None
     i += 1
 
     # Plot to see the BO moves
-    plt.plot(unnorm_candidate, f(unnorm_candidate), 'bs', markersize=8, label=mylabel)
-    plt.legend(frameon=False)
+    ax1.plot(unnorm_candidate, f(unnorm_candidate), 'bs', markersize=8, label=mylabel)
+    ax1.legend(frameon=False)
     plt.draw()
+    # ax1.pause(0.05)
+
+    ax2.plot(plot_x, acq_eval.detach().numpy(), 'g', alpha=0.5, label=mylabel2)
+    ax2.plot(plot_x[np.where(acq_eval.detach().numpy() == acq_eval.detach().numpy().max())[0]], acq_eval.detach().numpy().max(), 'rx', markersize=8, label=mylabel3)
+    ax2.legend(frameon=False)
+    plt.draw()
+    # ax2.tight_layout()
     plt.pause(0.05)
 
 error = ((unnorm_candidate - actual_max)*100/actual_max).cpu().numpy()
 print("Error from actual max is:", round(error[0][0],2),"%") 
-print("Actual max is:", actual_max, plot_y.max())
+print("Actual max is:", actual_max, round(plot_y.max(),2))
 plt.ioff()
 plt.show()

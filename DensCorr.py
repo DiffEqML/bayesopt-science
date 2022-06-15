@@ -91,6 +91,7 @@ i = 1
 err = 1
 tol = 1e-3
 n_iter = 20
+x_span = torch.linspace(0, 1, 200)[:, None, None] # batch, 1 (q), 1 (feature dimension)
 
 # Main BO Loop
 while i <= n_iter and abs(err) > tol:
@@ -104,6 +105,14 @@ while i <= n_iter and abs(err) > tol:
 
     # Optimizing the acquisition function to get its max 
     candidate, acq_value = optimize_acqf(EI, bounds=bounds, q=1, num_restarts=5, raw_samples=512)
+    
+    # Evaluate ACQ function at the candidate at a linspace
+    # Use this to plot BO moves
+    # Note that ExpectedImprovement has an analytic form that uses GP posteriors
+    # whereas qExpectedImprovement uses a Monte Carlo approximation
+    # https://botorch.org/v/0.1.0/docs/acquisition
+    acq_eval = EI(x_span)
+
 
     # Calculate by how much the BO guess has moved by
     unnorm_candidate = candidate*(P.max() - P.min()) + P.min()

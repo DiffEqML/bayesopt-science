@@ -103,7 +103,7 @@ while i <= n_iter and abs(err) > tol:
     EI = qExpectedImprovement(gp, train_Y.max(), maximize=True)
 
     # Optimizing the acquisition function to get its max 
-    candidate, acq_value = optimize_acqf(EI, bounds=bounds, q=1, num_restarts=5, raw_samples=20)
+    candidate, acq_value = optimize_acqf(EI, bounds=bounds, q=1, num_restarts=5, raw_samples=512)
 
     # Calculate by how much the BO guess has moved by
     unnorm_candidate = candidate*(P.max() - P.min()) + P.min()

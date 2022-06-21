@@ -2,7 +2,6 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import torch
 import math
-import random
 import numpy as np
 import scipy.io
 from scipy.interpolate import interp1d
@@ -10,7 +9,6 @@ from scipy.interpolate import interp1d
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_model
 from gpytorch.mlls import ExactMarginalLogLikelihood
-from gpytorch.kernels import ScaleKernel, RBFKernel, GaussianSymmetrizedKLKernel, MaternKernel
 
 from botorch.acquisition import qExpectedImprovement
 from botorch.optim import optimize_acqf
@@ -22,13 +20,13 @@ nice_fonts = {
         "font.family": "serif",
         "mathtext.fontset": "dejavuserif",
         # Thesis use 16 and 14, respectively
-        "axes.labelsize": 18,
-        "font.size": 18,
+        "axes.labelsize": 16,
+        "font.size": 16,
         # Make the legend/label fonts a little smaller
-        "legend.fontsize": 16,
-        "xtick.labelsize": 18,
-        "ytick.labelsize": 18,
-        "figure.figsize": [12,8],
+        "legend.fontsize": 14,
+        "xtick.labelsize": 16,
+        "ytick.labelsize": 16,
+        "figure.figsize": [10,8],
 }
 
 mpl.rcParams.update(nice_fonts)
@@ -52,18 +50,13 @@ def loadmatlab(filename):
 
 
 # Loading the data
-P, corr_length, dens_fluc = loadmatlab('B3')
+P, corr_length, dens_fluc = loadmatlab('B1')
 
 # Creating a cubic interpolation based on the gathered data
 def f(x):
     f_interp = interp1d(P, corr_length, kind='cubic')
 
     return f_interp(x)
-
-def get_init(num_samples):
-
-    return random.sample(range(len(P)), num_samples)
-
 
 # For plotting purposes only
 plot_x = np.linspace(P.min(), P.max(), 1001)
@@ -77,6 +70,8 @@ norm_P = (P - P.min())/(P.max() - P.min())
 bounds = torch.stack([torch.zeros(1), torch.ones(1)])
 
 # Pick which samples to start with
+# train_X = [[norm_P[0]], [norm_P[len(P)//4]], [norm_P[len(P)//2]], [norm_P[-1]]]
+# train_Y = [[norm_corr_length[0]], [norm_corr_length[len(P)//4]], [norm_corr_length[len(P)//2]], [norm_corr_length[-1]]]
 train_X = [[norm_P[0]], [norm_P[-1]]]
 train_Y = [[corr_length[0]],[corr_length[-1]]]
 train_X = torch.tensor(train_X)
@@ -96,7 +91,7 @@ ax1.legend(frameon=False)
 ax2.set(xlabel='$P~$[bar]', ylabel='Exp. Improvement')
 ax2.set_xlim(70, 82)
 plt.tight_layout()
-plt.pause(0.4)
+plt.pause(0.1)
 
 i = 1
 err = 1
@@ -106,10 +101,7 @@ x_span = torch.linspace(0, 1, 1001)[:, None, None] # batch, 1 (q), 1 (feature di
 
 # Main BO Loop
 while i <= n_iter and abs(err) > tol:
-    # norm_Y = (train_Y - train_Y.mean())/train_Y.std()
     norm_Y = (train_Y - train_Y.min())/(train_Y.max() - train_Y.min())
-    # norm_Y = train_Y
-    
     # Fitting a GP model
     gp = SingleTaskGP(train_X, norm_Y)
     mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
@@ -125,22 +117,17 @@ while i <= n_iter and abs(err) > tol:
 
     # Calculate by how much the BO guess has moved by
     unnorm_candidate = candidate*(P.max() - P.min()) + P.min()
-    # prev_candidate = train_X[-1]*(P.max() - P.min()) + P.min()
+    prev_candidate = train_X[-1]*(P.max() - P.min()) + P.min()
 
     # err = (unnorm_candidate - prev_candidate)/prev_candidate
     err = candidate - train_X[-1]
 
     print(i, unnorm_candidate, f(unnorm_candidate), abs(err).cpu().numpy())
 
-    # norm_f_candidate = (f(unnorm_candidate) - corr_length.min())/(corr_length.max() - corr_length.min())
-    # norm_f_candidate = (f(unnorm_candidate) - train_Y.mean().cpu().numpy())/train_Y.std().cpu().numpy()
+    norm_f_candidate = (f(unnorm_candidate) - corr_length.min())/(corr_length.max() - corr_length.min())
     # Append new torch tensors
     train_X = torch.cat((train_X, candidate))
-
-    # Normalized
     # train_Y = torch.cat((train_Y, torch.tensor(norm_f_candidate)))
-
-    # Unnormalized
     train_Y = torch.cat((train_Y, torch.tensor(f(unnorm_candidate))))
 
     if i == 1:
@@ -149,7 +136,7 @@ while i <= n_iter and abs(err) > tol:
         mylabel3 = 'Target'
     else:
         mylabel = None
-        mylabel2 = 'Acq. Func.'
+        mylabel2 = None
         mylabel3 = None
     i += 1
 
@@ -157,16 +144,14 @@ while i <= n_iter and abs(err) > tol:
     ax1.plot(unnorm_candidate, f(unnorm_candidate), 'bs', markersize=8, label=mylabel)
     ax1.legend(frameon=False)
     plt.draw()
+    # ax1.pause(0.05)
 
-    ax2.plot(plot_x, acq_eval.detach().numpy(), 'g', alpha=0.5, label=mylabel2)
-    ax2.set(xlabel='$P~$[bar]', ylabel='Exp. Improvement')
+    ax2.plot(plot_x, acq_eval.detach().numpy()/acq_eval.detach().numpy().max(), 'g', alpha=0.5, label=mylabel2)
     # ax2.plot(plot_x[np.where(acq_eval.detach().numpy() == acq_eval.detach().numpy().max())[0]], 1, 'rx', markersize=8, label=mylabel3)
     ax2.legend(frameon=False)
     plt.draw()
-    plt.tight_layout()
     # ax2.tight_layout()
-    plt.pause(0.25)
-    plt.cla()
+    plt.pause(0.05)
 
 error = ((unnorm_candidate - actual_max)*100/actual_max).cpu().numpy()
 print("Error from actual max is:", round(error[0][0],2),"%") 

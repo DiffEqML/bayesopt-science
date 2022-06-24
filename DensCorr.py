@@ -9,6 +9,7 @@ from scipy.interpolate import interp1d
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_model
 from gpytorch.mlls import ExactMarginalLogLikelihood
+from gpytorch.kernels import CosineKernel, RBFKernel, RQKernel, MaternKernel
 
 from botorch.acquisition import qExpectedImprovement
 from botorch.optim import optimize_acqf
@@ -31,7 +32,7 @@ nice_fonts = {
 
 mpl.rcParams.update(nice_fonts)
 
-dtype = torch.float
+dtype = torch.double
 
 def loadmatlab(filename):
     mat = scipy.io.loadmat(filename, appendmat=True)
@@ -91,7 +92,7 @@ ax1.legend(frameon=False)
 ax2.set(xlabel='$P~$[bar]', ylabel='Exp. Improvement')
 ax2.set_xlim(70, 82)
 plt.tight_layout()
-plt.pause(0.1)
+plt.pause(0.4)
 
 i = 1
 err = 1
@@ -103,7 +104,7 @@ x_span = torch.linspace(0, 1, 1001)[:, None, None] # batch, 1 (q), 1 (feature di
 while i <= n_iter and abs(err) > tol:
     norm_Y = (train_Y - train_Y.min())/(train_Y.max() - train_Y.min())
     # Fitting a GP model
-    gp = SingleTaskGP(train_X, norm_Y)
+    gp = SingleTaskGP(train_X, norm_Y, covar_module=RQKernel())
     mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
     fit_gpytorch_model(mll)
 
@@ -151,7 +152,10 @@ while i <= n_iter and abs(err) > tol:
     ax2.legend(frameon=False)
     plt.draw()
     # ax2.tight_layout()
-    plt.pause(0.05)
+    plt.pause(0.25)
+
+    if abs(err) > tol:
+        plt.cla()
 
 error = ((unnorm_candidate - actual_max)*100/actual_max).cpu().numpy()
 print("Error from actual max is:", round(error[0][0],2),"%") 

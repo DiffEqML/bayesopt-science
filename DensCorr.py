@@ -6,8 +6,10 @@ import numpy as np
 import scipy.io
 from scipy.interpolate import interp1d
 
-from botorch.models import SingleTaskGP
+from botorch.models import SingleTaskGP, FixedNoiseGP
 from botorch.fit import fit_gpytorch_model
+from gpytorch.likelihoods import GaussianLikelihood
+from gpytorch.constraints import Interval, GreaterThan
 from gpytorch.mlls import ExactMarginalLogLikelihood
 from gpytorch.kernels import CosineKernel, RBFKernel, RQKernel, MaternKernel
 
@@ -49,9 +51,18 @@ def loadmatlab(filename):
 
     return P, corr_length, dens_fluc
 
-
 # Loading the data
-P, corr_length, dens_fluc = loadmatlab('B1')
+temperature = 30
+print(temperature)
+if type(temperature) == int:
+    P, corr_length, dens_fluc = loadmatlab('co2_t'+str(temperature)+'C')
+else:
+    if temperature == 30.5:
+        P, corr_length, dens_fluc = loadmatlab('B2')
+    if temperature == 31.5:
+        P, corr_length, dens_fluc = loadmatlab('B1')
+    if temperature == 32.5:
+        P, corr_length, dens_fluc = loadmatlab('B3')
 
 # Creating a cubic interpolation based on the gathered data
 def f(x):
@@ -68,15 +79,15 @@ actual_max = plot_x[np.where(plot_y == plot_y.max())[0]]
 norm_P = (P - P.min())/(P.max() - P.min())
 # norm_corr_length = (corr_length - corr_length.min())/(corr_length.max() - corr_length.min())
 
-bounds = torch.stack([torch.zeros(1), torch.ones(1)])
+bounds = torch.stack([torch.zeros(1, dtype=dtype), torch.ones(1, dtype=dtype)])
 
 # Pick which samples to start with
 # train_X = [[norm_P[0]], [norm_P[len(P)//4]], [norm_P[len(P)//2]], [norm_P[-1]]]
 # train_Y = [[norm_corr_length[0]], [norm_corr_length[len(P)//4]], [norm_corr_length[len(P)//2]], [norm_corr_length[-1]]]
 train_X = [[norm_P[0]], [norm_P[-1]]]
 train_Y = [[corr_length[0]],[corr_length[-1]]]
-train_X = torch.tensor(train_X)
-train_Y = torch.tensor(train_Y)
+train_X = torch.tensor(train_X, dtype=dtype)
+train_Y = torch.tensor(train_Y, dtype=dtype)
 
 # Interactive plot to visualize BO moves
 plt.ion()
@@ -102,9 +113,12 @@ x_span = torch.linspace(0, 1, 1001)[:, None, None] # batch, 1 (q), 1 (feature di
 
 # Main BO Loop
 while i <= n_iter and abs(err) > tol:
-    norm_Y = (train_Y - train_Y.min())/(train_Y.max() - train_Y.min())
+    # Two different ways of normalizing; keep training (generated) data stored separately
+    norm_Y = (train_Y - train_Y.mean())/train_Y.std() # Mean and Std
+    # norm_Y = (train_Y - train_Y.min())/(train_Y.max() - train_Y.min()) # Min Max
+
     # Fitting a GP model
-    gp = SingleTaskGP(train_X, norm_Y, covar_module=RQKernel())
+    gp = FixedNoiseGP(train_X, norm_Y, train_Yvar=torch.full_like(norm_Y, noise_variance))
     mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
     fit_gpytorch_model(mll)
 
@@ -123,13 +137,12 @@ while i <= n_iter and abs(err) > tol:
     # err = (unnorm_candidate - prev_candidate)/prev_candidate
     err = candidate - train_X[-1]
 
-    print(i, unnorm_candidate, f(unnorm_candidate), abs(err).cpu().numpy())
+    print(i, unnorm_candidate.cpu().numpy(), f(unnorm_candidate), abs(err).cpu().numpy())
 
     norm_f_candidate = (f(unnorm_candidate) - corr_length.min())/(corr_length.max() - corr_length.min())
     # Append new torch tensors
     train_X = torch.cat((train_X, candidate))
-    # train_Y = torch.cat((train_Y, torch.tensor(norm_f_candidate)))
-    train_Y = torch.cat((train_Y, torch.tensor(f(unnorm_candidate))))
+    train_Y = torch.cat((train_Y, torch.tensor(f(unnorm_candidate), dtype=dtype)))
 
     if i == 1:
         mylabel = 'BO Step'
@@ -137,7 +150,7 @@ while i <= n_iter and abs(err) > tol:
         mylabel3 = 'Target'
     else:
         mylabel = None
-        mylabel2 = None
+        mylabel2 = 'Acq. Func.'
         mylabel3 = None
     i += 1
 
@@ -147,7 +160,7 @@ while i <= n_iter and abs(err) > tol:
     plt.draw()
     # ax1.pause(0.05)
 
-    ax2.plot(plot_x, acq_eval.detach().numpy()/acq_eval.detach().numpy().max(), 'g', alpha=0.5, label=mylabel2)
+    ax2.plot(plot_x, acq_eval.detach().numpy(), 'g', alpha=0.5, label=mylabel2)
     # ax2.plot(plot_x[np.where(acq_eval.detach().numpy() == acq_eval.detach().numpy().max())[0]], 1, 'rx', markersize=8, label=mylabel3)
     ax2.legend(frameon=False)
     plt.draw()

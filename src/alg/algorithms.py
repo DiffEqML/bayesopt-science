@@ -5,6 +5,7 @@ Algorithms for BAX.
 from argparse import Namespace
 import copy
 import numpy as np
+import torch
 from abc import ABC, abstractmethod
 
 from ..utils.base import Base
@@ -460,6 +461,7 @@ class TopK(FixedPathAlgorithm):
         topk_idx = self.get_exe_path_topk_idx()
 
         exe_path_crop = Namespace()
+        
         exe_path_crop.x = [self.exe_path.x[idx] for idx in topk_idx]
         exe_path_crop.y = [self.exe_path.y[idx] for idx in topk_idx]
 
@@ -470,6 +472,7 @@ class TopK(FixedPathAlgorithm):
         topk_idx = self.get_exe_path_topk_idx()
 
         out_ns = Namespace()
+        import pdb; pdb.set_trace()
         out_ns.x = [self.exe_path.x[idx] for idx in topk_idx]
         out_ns.y = [self.exe_path.y[idx] for idx in topk_idx]
 
@@ -560,7 +563,8 @@ class AlgorithmSet:
         # Step through algorithms
         x_list = [algo.get_next_x() for algo in algo_list]
         while any(x is not None for x in x_list):
-            y_list = f_list(x_list)
+            x_list = torch.tensor(x_list)
+            y_list = f_list(x_list).sample()[0]
             x_list_new = []
             for algo, x, y in zip(algo_list, x_list, y_list):
                 if x is not None:

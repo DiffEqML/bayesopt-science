@@ -4,6 +4,7 @@ Acquisition functions.
 
 from argparse import Namespace
 import copy
+import torch
 import numpy as np
 from scipy.stats import norm as sps_norm
 
@@ -163,17 +164,23 @@ class AlgoAcqFunction(AcqFunction):
         output_list = []
         with Timer(f"Sample {self.params.n_path} execution paths"):
             # Initialize model fsl
-            self.model.initialize_function_sample_list(self.params.n_path)
+            # self.model.initialize_function_sample_list(self.params.n_path)
 
-            # Run algorithm on function sample list
-            f_list = self.model.call_function_sample_list
-            algoset = AlgorithmSet(self.algorithm)
-            exe_path_full_list, output_list = algoset.run_algorithm_on_f_list(
-                f_list, self.params.n_path
-            )
+            #n_bases = self.params.n_bases
+            #paths = self.params.model.generate_paths(num_samples=n_samp, num_bases=n_bases)
+            #_ = self.params.model.set_paths(paths)
+
+            x = torch.rand( (100, self.params.n_dimx)) / 10 # [0, 0.1]
+
+            #Run algorithm on function sample list
+            # f_list = self.model.call_function_sample_list
+            # algoset = AlgorithmSet(self.algorithm)
+            #exe_path_full_list, output_list = algoset.run_algorithm_on_f_list(
+            #    f_list, self.params.n_path
+            #)
 
             # Get crop of each exe_path in exe_path_list
-            exe_path_list = algoset.get_exe_path_list_crop()
+            # exe_path_list = algoset.get_exe_path_list_crop()
 
         return exe_path_list, output_list, exe_path_full_list
 

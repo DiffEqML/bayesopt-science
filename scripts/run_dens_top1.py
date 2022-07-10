@@ -39,7 +39,7 @@ mpl.rcParams.update(nice_fonts)
 dtype = torch.double
 
 def loadmatlab(filename):
-    mat = scipy.io.loadmat('NoiseFree/'+filename, appendmat=True)
+    mat = scipy.io.loadmat('../data/noiseless/'+filename, appendmat=True)
     mat_contents = mat[filename]
     N = len(mat_contents)
     P = np.zeros(N)

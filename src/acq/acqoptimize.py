@@ -6,7 +6,7 @@ from argparse import Namespace
 import copy
 import numpy as np
 
-from .acquisition import BaxAcqFunction
+from .acquisition import MyBaxAcqFunction
 from ..utils.base import Base
 from ..utils.misc_util import dict_to_namespace
 
@@ -54,7 +54,7 @@ class AcqOptimizer(Base):
         if not acqfunction:
             # If acqfunction is None, set default acqfunction as BaxAcqFunction
             params = {"acq_str": "out"}
-            self.acqfunction = BaxAcqFunction(params)
+            self.acqfunction = MyBaxAcqFunction(params)
         else:
             self.acqfunction = acqfunction
 
@@ -79,15 +79,15 @@ class AcqOptimizer(Base):
         data = self.acqfunction.model.data
 
         # NOTE this only works for data.x consisting of list-types, not for arbitrary data.x
-        for x in data.x:
-            while True:
-                try:
-                    idx, pos = next(
-                        (tup for tup in enumerate(x_batch) if all(tup[1] == x))
-                    )
-                    del x_batch[idx]
-                except:
-                    break
+        # for x in data.x:
+        #     while True:
+        #         try:
+        #             idx, pos = next(
+        #                 (tup for tup in enumerate(x_batch) if all(tup[1] == x))
+        #             )
+        #             del x_batch[idx]
+        #         except:
+        #             break
 
         return x_batch
 

@@ -603,3 +603,201 @@ class AlgorithmSet:
         del exe_path.x[final_idx:]
         del exe_path.y[final_idx:]
         return exe_path
+
+
+#######
+
+
+class MyAlgorithm(ABC, Base):
+    """Base class for a BAX Algorithm"""
+
+    def set_params(self, params):
+        """Set self.params, the parameters for the algorithm."""
+        super().set_params(params)
+        params = dict_to_namespace(params)
+        self.params.name = getattr(params, "name", "Algorithm")
+
+    def initialize(self):
+        """Initialize algorithm, reset execution path."""
+        self.exe_path = Namespace(x=[], y=[])
+
+    def get_next_x(self):
+        """
+        Given the current execution path, return the next x in the execution path. If
+        the algorithm is complete, return None.
+        """
+        # Default behavior: return a uniform random value 10 times
+        next_x = torch.rand(size=(1,)) if len(self.exe_path.x) < 10 else None
+        return next_x
+
+    def take_step(self, f):
+        """Take one step of the algorithm."""
+        x = self.get_next_x()
+        if x is not None:
+            y = f(x)
+            self.exe_path.x.append(x)
+            self.exe_path.y.append(y)
+        return x
+
+    def run_algorithm_on_f(self, f):
+        """
+        Run the algorithm by sequentially querying function f. Return the execution path
+        and output.
+        """
+        self.initialize()
+
+        # Step through algorithm
+        x = self.take_step(f)
+        while x is not None:
+            x = self.take_step(f)
+
+        # Return execution path and output
+        return self.exe_path, self.get_output()
+
+    def get_exe_path_crop(self):
+        """
+        Return the minimal execution path for output, i.e. cropped execution path,
+        specific to this algorithm.
+        """
+        # As default, return untouched execution path
+        return self.exe_path
+
+    def get_copy(self):
+        """Return a copy of this algorithm."""
+        return copy.deepcopy(self)
+
+    @abstractmethod
+    def get_output(self):
+        """Return output based on self.exe_path."""
+        pass
+
+    def get_output_dist_fn(self):
+        """Return distance function for pairs of outputs."""
+
+        # Default dist_fn casts outputs to arrays and returns Euclidean distance
+        def dist_fn(a, b):
+            a_arr = np.array(a)
+            b_arr = np.array(b)
+            return np.linalg.norm(a_arr - b_arr)
+
+        return dist_fn
+
+
+class MyFixedPathAlgorithm(MyAlgorithm):
+    """
+    Algorithm with a fixed execution path input sequence, specified by x_path parameter.
+    """
+
+    def set_params(self, params):
+        """Set self.params, the parameters for the algorithm."""
+        super().set_params(params)
+        params = dict_to_namespace(params)
+
+        self.params.name = getattr(params, "name", "FixedPathAlgorithm")
+        self.params.x_path = getattr(params, "x_path", [])
+
+    def get_next_x(self):
+        """
+        Given the current execution path, return the next x in the execution path. If
+        the algorithm is complete, return None.
+        """
+        len_path = len(self.exe_path.x)
+        x_path = self.params.x_path
+        next_x = x_path[len_path] if len_path < len(x_path) else None
+        return next_x
+
+    def get_output(self):
+        """Return output based on self.exe_path."""
+        # Default behavior: return execution path
+        return self.exe_path
+
+    def set_print_params(self):
+        """Set self.print_params."""
+        super().set_print_params()
+        delattr(self.print_params, "x_path")
+
+
+class MyTopK(MyFixedPathAlgorithm):
+    """
+    Algorithm that scans over a set of points, and as output returns the K points with
+    highest value.
+    """
+
+    def set_params(self, params):
+        """Set self.params, the parameters for the algorithm."""
+        super().set_params(params)
+        params = dict_to_namespace(params)
+
+        self.params.name = getattr(params, "name", "TopK")
+        self.params.opt_mode = getattr(params, "opt_mode", "max")
+        self.params.k = getattr(params, "k", 3)
+        self.params.dist_str = getattr(params, "dist_str", "norm")
+
+    def get_exe_path_topk_idx(self):
+        """Return the index of the optimal point in execution path."""
+        self.exe_path.x = torch.tensor(self.exe_path.x)
+        self.exe_path.y = torch.tensor(self.exe_path.y)
+        if self.params.opt_mode == "min":
+            topk_idx = torch.argsort(self.exe_path.y, 0)[:self.params.k]
+        elif self.params.opt_mode == "max":
+            rev_exe_path_y = - self.exe_path.y
+            topk_idx = torch.argsort(rev_exe_path_y, 0)[:self.params.k]
+
+        return topk_idx
+
+    def get_exe_path_crop(self):
+        """
+        Return the minimal execution path for output, i.e. cropped execution path,
+        specific to this algorithm.
+        """
+        topk_idx = self.get_exe_path_topk_idx()
+
+        exe_path_crop = Namespace()
+        
+        exe_path_crop.x = [self.exe_path.x[idx] for idx in topk_idx]
+        exe_path_crop.y = [self.exe_path.y[idx] for idx in topk_idx]
+
+        return exe_path_crop
+
+    def get_output(self):
+        """Return output based on self.exe_path."""
+        topk_idx = self.get_exe_path_topk_idx()
+        out_ns = Namespace()
+        # import pdb; pdb.set_trace()
+        out_ns.x = [self.exe_path.x[idx] for idx in topk_idx]
+        out_ns.y = [self.exe_path.y[idx] for idx in topk_idx]
+
+        out_ns.x = torch.tensor(out_ns.x)
+        out_ns.y = torch.tensor(out_ns.y)
+        return out_ns
+
+    def get_output_dist_fn(self):
+        """Return distance function for pairs of outputs."""
+        if self.params.dist_str == "norm":
+            dist_fn = self.output_dist_fn_norm
+        elif self.params.dist_str == "jaccard":
+            dist_fn = self.output_dist_fn_jaccard
+
+        return dist_fn
+
+    def output_dist_fn_norm(self, a, b):
+        """Output dist_fn based on concatenated vector norm."""
+        a_list = []
+        list(map(a_list.extend, a.x))
+        a_list.extend(a.y)
+        a_arr = np.array(a_list)
+
+        b_list = []
+        list(map(b_list.extend, b.x))
+        b_list.extend(b.y)
+        b_arr = np.array(b_list)
+
+        return np.linalg.norm(a_arr - b_arr)
+
+    def output_dist_fn_jaccard(self, a, b):
+        """Output dist_fn based on Jaccard similarity."""
+        a_x_tup = [tuple(x) for x in a.x]
+        b_x_tup = [tuple(x) for x in b.x]
+        jac_sim = jaccard_similarity(a_x_tup, b_x_tup)
+        dist = 1 - jac_sim
+        return dist

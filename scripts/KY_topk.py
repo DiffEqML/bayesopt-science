@@ -158,7 +158,7 @@ def particle_topk(xvals, yvals, k, lr, func=interp, n_particles=1000, inner_iter
         
         v = 0
         while True:
-            if v >= len(particles) or v >= len(vals)  or v >= len(indices):
+            if v >= len(particles) or v >= len(vals) or v >= len(indices):
                 print("Breaking early, not enough significant top-k elements...")
                 return torch.stack(values), torch.stack(values_x)
             
@@ -192,26 +192,34 @@ def particle_topk(xvals, yvals, k, lr, func=interp, n_particles=1000, inner_iter
 # Define the domain resolution and bounds, number of BO iterations, 
 # number of posterior samples, number of peaks to detect, type of detection
 # algorithm, and convergence criteria
-N = 100
+N = 1000
 low_bound = -1
 upp_bound = 1
 
-n_iter = 10
+n_iter = 20
 n_samples = 12
 k = 2
+normalize = False
 
 # Currently accepted options are: "particle" or "offset"
-topk = "particle"
+# topk = "particle"
 topk = "offset"
 
 # Initialize the system and find the top-k maxima
 plot_x = torch.linspace(low_bound, upp_bound, N)
 plot_y = f(plot_x)
 
+# Normalized
+if normalize == True:
+    plot_x = (plot_x - low_bound)/(upp_bound - low_bound)
+
 if topk == "offset":
     # Choose your desired offset level, i.e., separation between the peaks
     topk_algo = naive_topk_eps
-    buffer = 0.5
+    if normalize == True:
+        buffer = 0.1
+    else:
+        buffer = 0.1*(upp_bound - low_bound)
     print("")
     print("--Executing a naive top-k with an offset of", buffer, "to detect the peaks--")
     topk_xvals, topk_yvals = naive_topk_eps(plot_x, plot_y, k, buffer)
@@ -251,9 +259,12 @@ plt.pause(0.4)
 
 # Main BO iteration loop
 i = 1
-tol = 1e-2
+tol = 1e-4
 err = 1
-while i <= n_iter and err > tol:
+while (i <= n_iter and err > tol):
+    if normalize == True:
+        train_Y = (train_Y - train_Y.mean())/train_Y.std()
+
     # Fitting a GP model
     gp = SingleTaskGP(train_X, train_Y)
     mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
@@ -277,9 +288,11 @@ while i <= n_iter and err > tol:
 
     for j in range(n_samples):
         sample_xvals, sample_yvals = topk_algo(plot_x, samples[j].squeeze(1), k, buffer)
-        # print(sample_xvals.detach(), sample_yvals)
         new_X = torch.cat((train_X, sample_xvals.detach().unsqueeze(1)))
         new_Y = torch.cat((train_Y, sample_yvals.detach().unsqueeze(1)))
+
+        if normalize == True:
+            new_Y = (new_Y - new_Y.mean())/new_Y.std()
 
         new_gp = SingleTaskGP(new_X, new_Y)
         new_mll = ExactMarginalLogLikelihood(new_gp.likelihood, new_gp)
@@ -300,7 +313,10 @@ while i <= n_iter and err > tol:
             break
 
     x_next = plot_x[next_indx]
-    y_next = f(x_next)
+    if normalize == True:
+        y_next = f(x_next*(upp_bound - low_bound) + low_bound)
+    else:
+        y_next = f(x_next)
 
     train_X = torch.cat((train_X, torch.tensor([x_next]).unsqueeze(1)))
     train_Y = torch.cat((train_Y, torch.tensor([y_next]).unsqueeze(1)))
@@ -344,6 +360,9 @@ while i <= n_iter and err > tol:
 
     i += 1
 
-print("Converged in", i, "iterations")
+if i-1 != 0:
+    print("Converged in", i-1, "iterations with error:")
+    ov_err = np.divide((avg_xvals.detach().numpy() - topk_xvals.detach().numpy()), topk_xvals.detach().numpy())
+    print(np.round(abs(ov_err)*100, 1))
 plt.ioff()
 plt.show()

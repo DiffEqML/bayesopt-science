@@ -126,11 +126,11 @@ noise_variance = 1e-8
 # Main BO Loop
 while i <= n_iter and abs(err) > tol:
     # Two different ways of normalizing; keep training (generated) data stored separately
-    norm_Y = (train_Y - train_Y.mean())/train_Y.std() # Mean and Std
+    # norm_Y = (train_Y - train_Y.mean())/train_Y.std() # Mean and Std
     # norm_Y = (train_Y - train_Y.min())/(train_Y.max() - train_Y.min()) # Min Max
 
     # Unnormalized
-    # norm_Y = train_Y
+    norm_Y = train_Y
     
     # Fitting a GP model
     # likelihood = GaussianLikelihood(noise_constraint=Interval(1e-8, 1e-7))
